@@ -1,0 +1,1348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>SPC Outlook Viewer</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Theme variables ─────────────────────────────────────── */
+:root {
+  --bg:         #f5f6fc;
+  --panel:      #ffffff;
+  --panel-2:    #f0f2fb;
+  --border:     #d0d4f0;
+  --border-2:   #e4e6f8;
+  --hover:      #eceefa;
+  --text-a:     #111228;
+  --text-b:     #282a4a;
+  --text-c:     #4a4c80;
+  --text-d:     #6e70a8;
+  --text-e:     #8a8cb8;
+  --text-f:     #aaaacb;
+  --info-bg:    rgba(255,255,255,0.96);
+  --float-bg:   rgba(248,249,255,0.94);
+  --overlay-bg: rgba(245,246,253,0.97);
+  --load-bg:    rgba(245,246,253,0.82);
+  --coords-bg:  rgba(248,249,255,0.90);
+  --attr-bg:    rgba(255,255,255,0.88);
+  --bar-bg:     rgba(255,255,255,0.96);
+  --shadow:     rgba(0,0,30,0.12);
+  --hatch:      rgba(0,0,0,0.42);
+}
+[data-theme="dark"] {
+  --bg:         #0a0a14;
+  --panel:      #12121e;
+  --panel-2:    #0d0d1a;
+  --border:     #1e1e30;
+  --border-2:   #1a1a2c;
+  --hover:      #1a1a2c;
+  --text-a:     #ccccdd;
+  --text-b:     #aaaabb;
+  --text-c:     #888899;
+  --text-d:     #77778a;
+  --text-e:     #55556a;
+  --text-f:     #333344;
+  --info-bg:    rgba(10,10,20,0.92);
+  --float-bg:   rgba(10,10,20,0.88);
+  --overlay-bg: rgba(8,8,18,0.97);
+  --load-bg:    rgba(8,8,18,0.75);
+  --coords-bg:  rgba(10,10,20,0.80);
+  --attr-bg:    rgba(8,8,18,0.80);
+  --bar-bg:     rgba(10,10,20,0.90);
+  --shadow:     rgba(0,0,0,0.50);
+  --hatch:      rgba(255,255,255,0.45);
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  color: var(--text-a);
+  overflow: hidden;
+}
+
+/* ── Layout ──────────────────────────────────────────────── */
+#app { display: flex; height: 100vh; position: relative; }
+
+/* ── Sidebar ─────────────────────────────────────────────── */
+#sidebar {
+  width: 256px; min-width: 256px;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  z-index: 900;
+  transition: transform 0.25s ease;
+  overflow: hidden;
+}
+#sidebar-inner {
+  display: flex; flex-direction: column;
+  height: 100%; overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.section {
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--border-2);
+  flex-shrink: 0;
+}
+.section-title {
+  font-size: 9.5px; font-weight: 700;
+  color: var(--text-e);
+  text-transform: uppercase; letter-spacing: 1.3px;
+  margin-bottom: 8px;
+}
+
+/* ── Header ──────────────────────────────────────────────── */
+#header {
+  padding: 11px 13px 10px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--border-2);
+  flex-shrink: 0;
+  display: flex; flex-direction: column; gap: 8px;
+}
+#header-text h1 {
+  font-size: 14px; font-weight: 800;
+  color: #e04555;
+  letter-spacing: 0.3px;
+}
+#header-text p { font-size: 10px; color: var(--text-e); margin-top: 2px; }
+
+/* Logo in header (left) */
+.header-top { text-align: center; }
+#site-logo {
+  display: inline-block;
+  max-width: 230px;
+  width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+.header-sep {
+  width: calc(100% + 26px);
+  border-bottom: 1px solid var(--border-2);
+  margin: 4px -13px 6px -13px;
+  padding: 0;
+}
+.header-row { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.header-row #header-text { text-align: left; }
+
+/* ── Theme toggle ────────────────────────────────────────── */
+#theme-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  width: 30px; height: 30px;
+  font-size: 14px; line-height: 1;
+  cursor: pointer; color: var(--text-d);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+#theme-toggle:hover { background: var(--hover); border-color: var(--text-e); }
+
+/* ── File loader ─────────────────────────────────────────── */
+#load-label {
+  display: flex; align-items: center; gap: 7px;
+  padding: 9px 11px;
+  background: var(--panel-2);
+  border: 1.5px dashed var(--border);
+  border-radius: 6px;
+  color: var(--text-d);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  user-select: none;
+}
+#load-label:hover { border-color: #e04555; color: var(--text-b); }
+#file-input { display: none; }
+#loaded-filename {
+  font-size: 10px; color: var(--text-e); margin-top: 5px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* ── Layer toggles ───────────────────────────────────────── */
+#layers-list { display: flex; flex-direction: column; gap: 2px; }
+.layer-group-title {
+  font-size: 9px; font-weight: 700;
+  color: var(--text-f); text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 5px 2px 3px;
+}
+.layer-row {
+  display: flex; align-items: center; gap: 7px;
+  padding: 5px 6px; border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.1s;
+  user-select: none;
+}
+.layer-row:hover { background: var(--hover); }
+.layer-row.dimmed { opacity: 0.38; }
+
+.layer-check, .layer-radio {
+  width: 14px; height: 14px;
+  accent-color: #e04555;
+  cursor: pointer; flex-shrink: 0;
+}
+.layer-sub { padding-left: 22px; }
+.layer-sub.dimmed { opacity: 0.25; }
+.layer-swatches {
+  display: flex; gap: 2px;
+  height: 11px; flex-shrink: 0;
+}
+.swatch {
+  width: 11px; border-radius: 1.5px;
+  border: 1px solid rgba(128,128,128,0.2);
+}
+.swatch.cig-swatch {
+  background: repeating-linear-gradient(
+    45deg, transparent, transparent 3px,
+    var(--hatch) 3px, var(--hatch) 4px
+  ) !important;
+}
+.layer-label { font-size: 11.5px; color: var(--text-b); }
+.layer-count { font-size: 10px; color: var(--text-f); margin-left: auto; }
+.layer-empty { font-size: 11px; color: var(--text-f); padding: 2px 0; }
+
+/* ── Day selector ────────────────────────────────────────── */
+#day-select {
+  width: 100%;
+  padding: 7px 9px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-b);
+  font-size: 12px;
+  cursor: pointer;
+  appearance: auto;
+}
+#day-select:focus { outline: none; border-color: #e04555; }
+
+/* ── Metadata ────────────────────────────────────────────── */
+.meta-grid {
+  display: grid; grid-template-columns: auto 1fr;
+  gap: 3px 8px; font-size: 11px;
+}
+.meta-key { color: var(--text-e); white-space: nowrap; }
+.meta-val { color: var(--text-c); }
+
+/* ── Map area ────────────────────────────────────────────── */
+#map-wrap { flex: 1; position: relative; overflow: hidden; }
+#map { height: 100%; width: 100%; }
+
+/* ── No data message overlay ─────────────────────────────── */
+#no-data-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 900;
+  background: var(--panel);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  padding: 40px 60px;
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--text-b);
+  text-align: center;
+  box-shadow: 0 6px 24px var(--shadow);
+  display: none;
+  pointer-events: none;
+}
+#no-data-overlay.visible {
+  display: block;
+}
+
+/* ── Floating info panel ─────────────────────────────────── */
+#info-panel {
+  position: absolute;
+  bottom: 26px; right: 10px;
+  z-index: 800;
+  background: var(--info-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  min-width: 200px; max-width: 290px;
+  max-height: 45vh; overflow-y: auto;
+  font-size: 12px; line-height: 1.5;
+  box-shadow: 0 4px 18px var(--shadow);
+  pointer-events: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.info-coords {
+  font-size: 10px; color: var(--text-e);
+  font-variant-numeric: tabular-nums;
+  font-family: 'Consolas', 'SF Mono', monospace;
+  margin-bottom: 6px;
+}
+.info-card {
+  margin-bottom: 7px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--border-2);
+}
+.info-card:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.info-layer-name {
+  font-size: 9.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.8px;
+  color: var(--text-e); margin-bottom: 4px;
+}
+.info-badge {
+  display: inline-block;
+  font-size: 13px; font-weight: 800;
+  line-height: 1; padding: 1px 6px;
+  border-radius: 4px;
+  margin-bottom: 3px;
+}
+.info-desc { font-size: 11px; color: var(--text-c); }
+.info-sub  { font-size: 10px; color: var(--text-d); margin-top: 2px; }
+.info-empty { font-size: 11px; color: var(--text-f); }
+
+/* ── Coordinates bar ─────────────────────────────────────── */
+#coords-bar {
+  position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%);
+  z-index: 800;
+  background: var(--coords-bg);
+  border-radius: 4px; padding: 2px 9px;
+  font-size: 11px; color: var(--text-e);
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+  font-family: 'Consolas', 'SF Mono', monospace;
+  white-space: nowrap;
+}
+
+/* ── Sidebar toggle (mobile) ─────────────────────────────── */
+#sidebar-toggle {
+  display: none;
+  position: absolute; top: 10px; left: 10px; z-index: 850;
+  background: var(--float-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px; padding: 7px 11px;
+  color: var(--text-c); font-size: 17px; cursor: pointer;
+  line-height: 1; box-shadow: 0 2px 8px var(--shadow);
+}
+#sidebar-toggle:hover { background: var(--panel); }
+
+/* ── Drop/welcome overlay ────────────────────────────────── */
+#drop-overlay {
+  position: absolute; inset: 0;
+  background: var(--overlay-bg);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  z-index: 1000; gap: 0;
+  transition: background 0.15s;
+}
+#drop-overlay.hidden { display: none; }
+#drop-overlay.drag-active { outline: 3px dashed #e04555; outline-offset: -14px; }
+.drop-icon { font-size: 50px; margin-bottom: 16px; filter: saturate(0.7); }
+.drop-title { font-size: 22px; font-weight: 700; color: var(--text-a); margin-bottom: 6px; }
+.drop-sub {
+  font-size: 13px; color: var(--text-e); text-align: center;
+  line-height: 1.65; margin-bottom: 22px;
+}
+.drop-cta {
+  display: inline-block;
+  padding: 10px 26px;
+  background: #e04555; border: 1px solid #b02035;
+  border-radius: 8px; color: #fff;
+  font-size: 14px; font-weight: 600;
+  cursor: pointer; transition: background 0.15s;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+.drop-cta:hover { background: #c03040; }
+.drop-hint { margin-top: 14px; font-size: 11px; color: var(--text-f); }
+
+/* ── Loading ─────────────────────────────────────────────── */
+#loading {
+  display: none;
+  position: absolute; inset: 0;
+  background: var(--load-bg);
+  z-index: 1100;
+  align-items: center; justify-content: center;
+}
+#loading.visible { display: flex; }
+.loading-box {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 26px 36px;
+  text-align: center; color: var(--text-d); font-size: 13px;
+}
+.spinner {
+  width: 34px; height: 34px;
+  border: 3px solid var(--border);
+  border-top-color: #e04555;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  margin: 0 auto 14px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── SVG hatch lines (theme-sensitive stroke via CSS var) ─── */
+.hatch-line { stroke: var(--hatch); }
+
+/* ── Leaflet overrides ───────────────────────────────────── */
+.leaflet-control-attribution {
+  font-size: 9px !important;
+  background: var(--attr-bg) !important;
+  color: var(--text-f) !important;
+}
+.leaflet-control-attribution a { color: var(--text-e) !important; }
+.leaflet-bar { border: 1px solid var(--border) !important; box-shadow: 0 2px 8px var(--shadow) !important; }
+.leaflet-bar a { background: var(--bar-bg) !important; color: var(--text-c) !important; border-bottom-color: var(--border) !important; }
+.leaflet-bar a:hover { background: var(--panel) !important; color: var(--text-b) !important; }
+
+/* ── Mobile ──────────────────────────────────────────────── */
+@media (max-width: 720px) {
+  #sidebar {
+    position: absolute;
+    top: 0; bottom: 0; left: 0;
+    transform: translateX(-100%);
+    box-shadow: 4px 0 20px var(--shadow);
+  }
+  #sidebar.open { transform: translateX(0); }
+  #sidebar-toggle { display: block; }
+
+  #info-panel {
+    bottom: 7px; right: 7px; left: 7px;
+    max-width: none; min-width: 0;
+  }
+  #coords-bar { display: none; }
+}
+</style>
+
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Sidebar ─────────────────────────────────────────── -->
+  <div id="sidebar">
+    <div id="sidebar-inner">
+
+      <div id="header">
+        <div class="header-top">
+          <a href="https://zuranskiweather.com" target="_blank" rel="noopener" aria-label="Zuranski Weather">
+            <img id="site-logo" src="https://zuranskiweather.com/wp-content/uploads/2025/05/cropped-logo-transparent-png-scaled-1.png" alt="Zuranski Weather" />
+          </a>
+        </div>
+        <div class="header-sep" aria-hidden="true"></div>
+        <div class="header-row">
+          <div id="header-text">
+            <h1>SPC Outlook Viewer</h1>
+            <p><a href="https://www.spc.noaa.gov/" target="_blank">NOAA Storm Prediction Center</a></p>
+          </div>
+          <button id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark mode">🌙</button>
+        </div>
+      </div>
+
+      <!-- Day selector -->
+      <div class="section">
+        <div class="section-title">Live Data</div>
+        <select id="day-select">
+          <option value="1">Day 1 — Today (Thursday)</option>
+          <option value="2">Day 2 — Tomorrow (Friday)</option>
+          <option value="3">Day 3 — Saturday (03/28)</option>
+          <option value="4">Day 4 — Sunday (03/29)</option>
+          <option value="5">Day 5 — Monday (03/30)</option>
+          <option value="6">Day 6 — Tuesday (03/31)</option>
+          <option value="7">Day 7 — Wednesday (04/01)</option>
+          <option value="8">Day 8 — Thursday (04/02)</option>
+        </select>
+      </div>
+
+      <!-- File loader -->
+      <div class="section">
+        <label id="load-label" for="file-input">
+          <svg width="13" height="13" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M3 4a2 2 0 012-2h4.586A2 2 0 0111 2.586L14.414 6A2 2 0 0115 7.414V16a2 2 0 01-2 2H5a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h4a1 1 0 110 2H6a1 1 0 01-1-1zm1 3a1 1 0 100 2h4a1 1 0 100-2H6z" clip-rule="evenodd"/>
+          </svg>
+          Load Outlook ZIP
+        </label>
+        <input type="file" id="file-input" accept=".zip" />
+        <div id="loaded-filename"></div>
+      </div>
+
+      <!-- Layers -->
+      <div class="section">
+        <div class="section-title">Layers</div>
+        <div id="layers-list">
+          <div class="layer-empty">No file loaded</div>
+        </div>
+      </div>
+
+      <!-- Metadata -->
+      <div class="section">
+        <div class="section-title">Outlook Info</div>
+        <div id="meta-content">
+          <div class="meta-key" style="color:#334;font-size:11px">—</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Map area ────────────────────────────────────────── -->
+  <div id="map-wrap">
+    <button id="sidebar-toggle" onclick="toggleSidebar()" title="Toggle panel">&#9776;</button>
+    <div id="map"></div>
+    <div id="no-data-overlay"></div>
+    <div id="coords-bar"></div>
+
+    <!-- Floating info panel -->
+    <div id="info-panel">
+      <div id="info-content">
+        <div class="info-empty">Load a shapefile ZIP to begin</div>
+      </div>
+    </div>
+
+    <!-- Welcome / drop overlay -->
+    <div id="drop-overlay">
+      <div class="drop-icon">🗺️</div>
+      <div class="drop-title">SPC Outlook Viewer</div>
+      <div class="drop-sub">
+        Visualize NOAA/SPC convective outlook shapefiles.<br>
+        Drag &amp; drop a <strong style="color:#aab">shapefile ZIP</strong>, or choose one below.
+      </div>
+      <label class="drop-cta" for="file-input">Choose ZIP File</label>
+      <div class="drop-hint">Find shapefiles from <a href="https://www.spc.noaa.gov/products/outlook/">https://www.spc.noaa.gov/products/outlook/</a></div>
+      <div class="drop-sub">2026 - Mike Zuranski</div>
+    </div>
+
+    <!-- Loading -->
+    <div id="loading">
+      <div class="loading-box">
+        <div class="spinner"></div>
+        Parsing outlook data…
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/shpjs@4.0.4/dist/shp.js"></script>
+<script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
+
+<!-- Inline SVG hatch patterns for CIG layers.
+     Defined here so url(#id) references resolve from Leaflet's SVG pane. -->
+<svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">
+  <defs>
+    <!-- CIG1: sparse forward diagonal (/) -->
+    <pattern id="cig1-hatch" width="12" height="12" patternUnits="userSpaceOnUse">
+      <line class="hatch-line" x1="0" y1="18" x2="18" y2="0" stroke-width="1.5"/>
+    </pattern>
+    <!-- CIG2: medium backward diagonal (\) -->
+    <pattern id="cig2-hatch" width="8" height="8" patternUnits="userSpaceOnUse">
+      <line class="hatch-line" x1="0" y1="0" x2="18" y2="18" stroke-width="1.5"/>
+    </pattern>
+    <!-- CIG3: dense cross-hatch (X) -->
+    <pattern id="cig3-hatch" width="8" height="8" patternUnits="userSpaceOnUse">
+      <line class="hatch-line" x1="0" y1="0" x2="18" y2="18" stroke-width="1.5"/>
+      <line class="hatch-line" x1="18" y1="0" x2="0" y2="18" stroke-width="1.5"/>
+    </pattern>
+  </defs>
+</svg>
+<script>
+'use strict';
+
+/* ─────────────────────────────────────────────────────────────
+   Theme init – runs before first paint (scripts are at body end,
+   so the DOM already exists)
+   ────────────────────────────────────────────────────────── */
+(function () {
+  var stored = localStorage.getItem('spc-theme');
+  var theme  = stored || 'light';
+  document.documentElement.dataset.theme = theme;
+  var btn = document.getElementById('theme-toggle');
+  if (btn) btn.textContent = theme === 'dark' ? '☀️' : '🌙';
+})();
+
+/* ─────────────────────────────────────────────────────────────
+   Generate dynamic day labels based on current date
+   ────────────────────────────────────────────────────────── */
+function generateDayLabels() {
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);  // Reset to start of day
+
+  const labels = {};
+  for (let i = 1; i <= 8; i++) {
+    const date = new Date(today);
+    date.setDate(date.getDate() + (i - 1));
+    const dayName = dayNames[date.getDay()];
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const dateStr = `${month}/${day}`;
+
+    if (i === 1) {
+      labels[i] = `Day 1 — Today (${dayName})`;
+    } else if (i === 2) {
+      labels[i] = `Day 2 — Tomorrow (${dayName})`;
+    } else {
+      labels[i] = `Day ${i} — ${dayName} (${dateStr})`;
+    }
+  }
+  return labels;
+}
+
+// Update dropdown options on page load
+function initializeDayDropdown() {
+  const labels = generateDayLabels();
+  const select = document.getElementById('day-select');
+  if (select) {
+    for (let i = 1; i <= 8; i++) {
+      const option = select.querySelector(`option[value="${i}"]`);
+      if (option) option.textContent = labels[i];
+    }
+  }
+}
+
+// Call on page load
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeDayDropdown);
+} else {
+  initializeDayDropdown();
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Layer definitions — render order: cat first (bottom), CIG last (top)
+   ────────────────────────────────────────────────────────── */
+const LAYER_DEFS = [
+  { key: 'cat',     label: 'Categorical',      group: 'Categorical',          cig: false },
+  { key: 'torn',    label: 'Tornado',          group: 'Individual Hazard',    cig: false },
+  { key: 'wind',    label: 'Damaging Wind',    group: 'Individual Hazard',    cig: false },
+  { key: 'hail',    label: 'Large Hail',       group: 'Individual Hazard',    cig: false },
+  { key: 'prob',    label: 'Any Severe Prob.', group: 'Probabilistic',        cig: false },
+  { key: 'cigtorn', label: 'Sig. Tornado',     group: 'Conditional Intensity (CIG)', cig: true },
+  { key: 'cigwind', label: 'Sig. Wind',        group: 'Conditional Intensity (CIG)', cig: true },
+  { key: 'cighail', label: 'Sig. Hail',        group: 'Conditional Intensity (CIG)', cig: true },
+  { key: 'cigprob', label: 'Sig. Severe (CIG)',group: 'Conditional Intensity (CIG)', cig: true },
+];
+const LAYER_DEF_MAP = Object.fromEntries(LAYER_DEFS.map(d => [d.key, d]));
+const HAZARD_KEYS   = ['cat', 'torn', 'wind', 'hail', 'prob'];
+const CIG_MAP       = { torn: 'cigtorn', wind: 'cigwind', hail: 'cighail', prob: 'cigprob' };
+
+/* SPC shapefile ZIP URLs — days 1–2: cat/torn/wind/hail + CIG variants;
+   day 3: cat + prob (Any Severe) + cigprob;
+   days 4–8: single _prob file (experimental) */
+const DAY_URLS = {
+  1: 'https://www.spc.noaa.gov/products/outlook/day1otlk-shp.zip',
+  2: 'https://www.spc.noaa.gov/products/outlook/day2otlk-shp.zip',
+  3: 'https://www.spc.noaa.gov/products/outlook/day3otlk-shp.zip',
+  4: 'https://www.spc.noaa.gov/products/exper/day4-8/day4prob-shp.zip',
+  5: 'https://www.spc.noaa.gov/products/exper/day4-8/day5prob-shp.zip',
+  6: 'https://www.spc.noaa.gov/products/exper/day4-8/day6prob-shp.zip',
+  7: 'https://www.spc.noaa.gov/products/exper/day4-8/day7prob-shp.zip',
+  8: 'https://www.spc.noaa.gov/products/exper/day4-8/day8prob-shp.zip',
+};
+
+/* ─────────────────────────────────────────────────────────────
+   App state
+   ────────────────────────────────────────────────────────── */
+const state = {
+  layers:   {},   // key -> { geojson, leafletLayer, visible, def }
+  meta:     null,
+  dayCache: {},   // day number -> parsed fcAll (avoids re-fetching on day switch)
+};
+
+/* ─────────────────────────────────────────────────────────────
+   Leaflet map
+   ────────────────────────────────────────────────────────── */
+const map = L.map('map', {
+  center: [38, -95],
+  zoom: 4,
+  zoomControl: false,
+});
+
+L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+function tileUrl(theme) {
+  return theme === 'dark'
+    ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+    : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+}
+const TILE_ATTR =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors ' +
+  '&copy; <a href="https://carto.com/">CARTO</a> | ' +
+  '<a href="https://www.spc.noaa.gov/">NOAA/SPC</a>';
+let baseTile = L.tileLayer(tileUrl(document.documentElement.dataset.theme), {
+  attribution: TILE_ATTR,
+  subdomains: 'abcd',
+  maxZoom: 20,
+}).addTo(map);
+
+/* ─────────────────────────────────────────────────────────────
+   Mouse / touch tracking → info + coords
+   ────────────────────────────────────────────────────────── */
+const coordsBar = document.getElementById('coords-bar');
+
+map.on('mousemove', e => {
+  coordsBar.textContent = latlngStr(e.latlng);
+  queryPoint(e.latlng);
+});
+
+map.on('click', e => queryPoint(e.latlng));   // taps on mobile
+
+map.on('mouseout', () => {
+  coordsBar.textContent = '';
+});
+
+/* ─────────────────────────────────────────────────────────────
+   File loading
+   ────────────────────────────────────────────────────────── */
+document.getElementById('file-input').addEventListener('change', e => {
+  if (e.target.files[0]) loadZip(e.target.files[0]);
+  e.target.value = '';
+});
+
+// Drag-and-drop
+const mapWrap     = document.getElementById('map-wrap');
+const dropOverlay = document.getElementById('drop-overlay');
+
+mapWrap.addEventListener('dragover', e => {
+  e.preventDefault();
+  if (dropOverlay.classList.contains('hidden')) dropOverlay.classList.remove('hidden');
+  dropOverlay.classList.add('drag-active');
+});
+mapWrap.addEventListener('dragleave', e => {
+  if (!mapWrap.contains(e.relatedTarget)) {
+    dropOverlay.classList.remove('drag-active');
+    if (Object.keys(state.layers).length > 0) dropOverlay.classList.add('hidden');
+  }
+});
+mapWrap.addEventListener('drop', e => {
+  e.preventDefault();
+  dropOverlay.classList.remove('drag-active');
+  const file = e.dataTransfer.files[0];
+  if (file) loadZip(file);
+});
+
+async function loadZip(file) {
+  showLoading(true);
+  try {
+    clearLayers();
+    const buffer = await file.arrayBuffer();
+    let fcAll;
+    try {
+      const raw = await shp(buffer);
+      fcAll = Array.isArray(raw) ? raw : [raw];
+    } catch (batchErr) {
+      console.warn('Batch parse failed, retrying per-layer:', batchErr.message);
+      fcAll = await parseZipLayerByLayer(buffer);
+      if (fcAll.length === 0) throw batchErr;  // re-throw original if nothing parsed
+    }
+    await buildLayers(fcAll, file.name);
+  } catch (err) {
+    console.error(err);
+    alert('Could not load file:\n' + err.message);
+    showLoading(false);
+    return;
+  }
+  showLoading(false);
+}
+
+/* Per-layer fallback: parse each .shp individually, skip unsupported types */
+async function parseZipLayerByLayer(buffer) {
+  const zip = await JSZip.loadAsync(buffer);
+  const shpPaths = [];
+  zip.forEach(relPath => {
+    if (relPath.toLowerCase().endsWith('.shp') && !relPath.includes('__MACOSX')) {
+      shpPaths.push(relPath);
+    }
+  });
+  const results = [];
+  for (const shpPath of shpPaths) {
+    const base   = shpPath.slice(0, -4);
+    const dbfFile = zip.file(base + '.dbf') || zip.file(base + '.DBF');
+    try {
+      const shpBuf    = await zip.file(shpPath).async('arraybuffer');
+      const dbfBuf    = dbfFile ? await dbfFile.async('arraybuffer') : null;
+      const parsedShp = shp.parseShp(shpBuf);
+      const parsedDbf = dbfBuf ? shp.parseDbf(dbfBuf) : null;
+      const fc        = shp.combine([parsedShp, parsedDbf]);
+      fc.fileName = base;
+      results.push(fc);
+    } catch (e) {
+      console.warn(`Skipping "${base}": ${e.message}`);
+    }
+  }
+  return results;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Show/hide no-data message overlay
+   ────────────────────────────────────────────────────────── */
+function showNoDataMessage(message) {
+  const overlay = document.getElementById('no-data-overlay');
+  overlay.textContent = message;
+  overlay.classList.add('visible');
+}
+
+function hideNoDataMessage() {
+  const overlay = document.getElementById('no-data-overlay');
+  overlay.classList.remove('visible');
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Live data: fetch current SPC outlook by day number
+   ────────────────────────────────────────────────────────── */
+async function loadDay(n) {
+  // Sync the dropdown to match the requested day
+  document.getElementById('day-select').value = n;
+
+  if (state.dayCache[n]) {
+    clearLayers();
+    await buildLayers(state.dayCache[n], `Day ${n} Convective Outlook`, n);
+    return;
+  }
+
+  showLoading(true);
+  clearLayers();
+  try {
+    const resp = await fetch(DAY_URLS[n]);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status} — ${resp.statusText}`);
+    const buffer = await resp.arrayBuffer();
+    let fcAll;
+    try {
+      const raw = await shp(buffer);
+      fcAll = Array.isArray(raw) ? raw : [raw];
+    } catch (batchErr) {
+      console.warn('Batch parse failed, retrying per-layer:', batchErr.message);
+      fcAll = await parseZipLayerByLayer(buffer);
+      if (fcAll.length === 0) throw batchErr;
+    }
+    state.dayCache[n] = fcAll;
+    await buildLayers(fcAll, `Day ${n} Convective Outlook`, n);
+  } catch (err) {
+    console.error(err);
+    alert(`Could not load Day ${n} outlook:\n${err.message}`);
+  } finally {
+    showLoading(false);
+  }
+}
+
+document.getElementById('day-select').addEventListener('change', e => {
+  loadDay(parseInt(e.target.value));
+});
+
+// Auto-load Day 1 on startup
+loadDay(1);
+
+/* ─────────────────────────────────────────────────────────────
+   Build layers from parsed FeatureCollections
+   ────────────────────────────────────────────────────────── */
+async function buildLayers(fcAll, fileName, day = null) {
+  // Hide no-data overlay when starting to build layers
+  hideNoDataMessage();
+
+  // Deduplicate: for each layer key keep the best-scored FC
+  // (prefer: timestamped name, no .lyr/.nolyr suffix)
+  const best = {};   // key -> { fc, score }
+  let recognizedFilesCount = 0;  // tracks successfully recognized file formats
+  const recognizedKeys = new Set();  // track which layer keys were found
+
+  for (const fc of fcAll) {
+    if (!fc || !Array.isArray(fc.features) || fc.features.length === 0) continue;
+    const name  = (fc.fileName || '').toLowerCase();
+    const key   = detectLayerKey(name);
+    if (!key) {
+      console.debug(`Skipping unrecognized file: ${name}`);
+      continue;
+    }
+
+    recognizedFilesCount++;
+    recognizedKeys.add(key);  // track which layer keys we found
+
+    // Normalize probability-only features (day 4–8 _prob files have only a DN field)
+    if (!fc.features.some(f => f.properties?.fill || f.properties?.stroke)) {
+      const beforeCount = fc.features.length;
+      fc.features = fc.features.filter(f => (f.properties?.DN ?? 0) > 0);
+      console.debug(`Layer "${name}" (${key}): filtered ${beforeCount} features → ${fc.features.length} active areas`);
+      for (const f of fc.features) {
+        const c = probDnColor(f.properties.DN);
+        if (c) {
+          f.properties.fill   = c;
+          f.properties.stroke = c;
+          f.properties.LABEL  = `${f.properties.DN}%`;
+        }
+      }
+      if (fc.features.length === 0) continue;  // no active outlook for this day
+    }
+
+    const score = (/\d{8}/.test(name) ? 2 : 0) + (name.includes('.lyr') || name.includes('nolyr') ? 0 : 1);
+    console.debug(`Layer "${name}" (${key}): score=${score}`);
+    if (!best[key] || score > best[key].score) best[key] = { fc, score };
+  }
+
+  if (Object.keys(best).length === 0) {
+    // Determine appropriate message based on day and recognized layer types
+    let message;
+    if (recognizedFilesCount > 0) {
+      // Files were recognized but had no active outlook
+      const isDays1to3 = day !== null && day >= 1 && day <= 3;
+      const onlyCatRecognized = recognizedKeys.size === 1 && recognizedKeys.has('cat');
+
+      if (isDays1to3 && onlyCatRecognized) {
+        message = 'No Thunderstorms Forecast.';
+      } else {
+        message = 'Probability or Potential Too Low.';
+      }
+    } else {
+      // No files recognized at all - use generic message
+      message = 'Probability or Potential Too Low.';
+    }
+
+    showNoDataMessage(message);
+    return;
+  }
+
+  // Extract metadata
+  state.meta = null;
+  for (const { fc } of Object.values(best)) {
+    const p = fc.features[0]?.properties;
+    if (p) {
+      state.meta = {
+        issued:     fmtTime(p.ISSUE_ISO  || p.ISSUE),
+        valid:      fmtTime(p.VALID_ISO  || p.VALID),
+        expires:    fmtTime(p.EXPIRE_ISO || p.EXPIRE),
+        forecaster: (p.FORECASTER || '').trim() || '—',
+      };
+      break;
+    }
+  }
+
+  // Render in defined order
+  let bounds = null;
+  for (const def of LAYER_DEFS) {
+    const entry = best[def.key];
+    if (!entry) continue;
+    const fc = entry.fc;
+
+    // Strip CIG records from torn/wind/hail (they're shown via dedicated cig* layers)
+    if (['torn', 'wind', 'hail'].includes(def.key)) {
+      fc.features = fc.features.filter(f => !isCIGLabel(f.properties?.LABEL));
+      if (fc.features.length === 0) continue;
+    }
+
+    // Sort ascending by DN so higher-risk polygons render on top
+    fc.features.sort((a, b) => {
+      const an = +a.properties?.DN, bn = +b.properties?.DN;
+      if (isNaN(an) && isNaN(bn)) return 0;
+      if (isNaN(an)) return 1;
+      if (isNaN(bn)) return -1;
+      return an - bn;
+    });
+
+    const ll = L.geoJSON(fc, {
+      style:        f => featureStyle(f, def.cig),
+      onEachFeature: (f, layer) => attachHover(f, layer, def.cig),
+      interactive:  !def.cig,   // CIG paths don't block pointer events
+    }).addTo(map);
+
+    state.layers[def.key] = { geojson: fc, leafletLayer: ll, visible: true, def };
+
+    const b = ll.getBounds();
+    if (b.isValid()) bounds = bounds ? bounds.extend(b) : b;
+  }
+
+  if (bounds?.isValid()) map.fitBounds(bounds, { padding: [28, 28] });
+
+  // Default: show categorical if present, otherwise the first available hazard layer
+  const defaultKey = state.layers['cat'] ? 'cat' : (state.layers['prob'] ? 'prob' : HAZARD_KEYS.find(k => state.layers[k]));
+  for (const key of Object.keys(state.layers)) {
+    if (key !== defaultKey) {
+      state.layers[key].visible = false;
+      map.removeLayer(state.layers[key].leafletLayer);
+    }
+  }
+
+  dropOverlay.classList.add('hidden');
+  document.getElementById('loaded-filename').textContent = fileName;
+  renderLayersList();
+  renderMeta();
+  setInfoContent('<div class="info-empty">Hover or tap the map for feature info</div>');
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Layer key detection
+   ────────────────────────────────────────────────────────── */
+function detectLayerKey(name) {
+  if (!name) return null;
+  // CIG variants before their base types; cigprob before prob
+  for (const k of ['cigtorn', 'cigwind', 'cighail', 'cigprob', 'cat', 'torn', 'wind', 'hail', 'prob']) {
+    if (name.endsWith('_' + k)) return k;
+  }
+  return null;
+}
+
+function isCIGLabel(label) {
+  return typeof label === 'string' && label.toUpperCase().startsWith('CIG');
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Styling
+   ────────────────────────────────────────────────────────── */
+function cigPatternId(label) {
+  const m = String(label || '').toUpperCase().match(/CIG(\d)/);
+  if (m && m[1] === '3') return 'cig3-hatch';
+  if (m && m[1] === '2') return 'cig2-hatch';
+  return 'cig1-hatch';
+}
+
+function featureStyle(feature, isCIGLayer) {
+  const p      = feature.properties || {};
+  const fill   = validHex(p.fill)   || p.stroke || '#555';
+  const stroke = validHex(p.stroke) || '#555';
+  const cig    = isCIGLayer || isCIGLabel(p.LABEL);
+
+  if (cig) {
+    return {
+      fillColor:   `url(#${cigPatternId(p.LABEL)})`,
+      fillOpacity: 1,
+      color:       stroke,
+      weight:      1.5,
+      dashArray:   null,
+      opacity:     1,
+    };
+  }
+  return {
+    fillColor:   fill,
+    fillOpacity: 0.45,
+    color:       stroke,
+    weight:      1.2,
+    dashArray:   null,
+    opacity:     1,
+  };
+}
+
+function featureStyleHover(feature, isCIGLayer) {
+  const base = featureStyle(feature, isCIGLayer);
+  const cig  = isCIGLayer || isCIGLabel(feature.properties?.LABEL);
+  if (cig) return { ...base, weight: base.weight + 1.5 };
+  return { ...base, weight: base.weight + 1.5, fillOpacity: Math.min(base.fillOpacity + 0.22, 0.85) };
+}
+
+function attachHover(feature, layer, isCIGLayer) {
+  // CIG layers don't highlight on hover
+  if (isCIGLayer) return;
+  layer.on({
+    mouseover() { layer.setStyle(featureStyleHover(feature, isCIGLayer)); layer.bringToFront(); },
+    mouseout()  { layer.setStyle(featureStyle(feature, isCIGLayer)); },
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Point-in-polygon query → update floating info panel
+   ────────────────────────────────────────────────────────── */
+function queryPoint(latlng) {
+  const pt = [latlng.lng, latlng.lat];
+  const hits = [];
+  for (const def of LAYER_DEFS) {
+    const entry = state.layers[def.key];
+    if (!entry || !entry.visible) continue;
+    for (const feature of entry.geojson.features) {
+      if (feature.geometry && ptInGeom(pt, feature.geometry)) {
+        hits.push({ def, feature });
+      }
+    }
+  }
+  renderInfo(latlng, hits);
+}
+
+function ptInGeom(pt, geom) {
+  if (geom.type === 'Polygon')      return ptInPoly(pt, geom.coordinates);
+  if (geom.type === 'MultiPolygon') return geom.coordinates.some(r => ptInPoly(pt, r));
+  return false;
+}
+function ptInPoly([x, y], rings) {
+  if (!ptInRing([x, y], rings[0])) return false;
+  for (let h = 1; h < rings.length; h++) { if (ptInRing([x, y], rings[h])) return false; }
+  return true;
+}
+function ptInRing([x, y], ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Render: floating info panel
+   ────────────────────────────────────────────────────────── */
+function renderInfo(latlng, hits) {
+  let html = `<div class="info-coords">${latlngStr(latlng)}</div>`;
+
+  if (hits.length === 0) {
+    html += '<div class="info-empty">No outlook areas here</div>';
+    setInfoContent(html);
+    return;
+  }
+
+  for (const { def, feature } of hits) {
+    const p    = feature.properties || {};
+    const cig  = isCIGLabel(p.LABEL);
+    const fill = validHex(p.fill) || '#666';
+    const stroke = validHex(p.stroke) || '#555';
+
+    const badgeText  = cig ? (p.LABEL || '—')
+                           : formatLabel(p.LABEL);
+    const textColor  = contrastColor(fill);
+
+    const desc2 = p.LABEL2 ? `<div class="info-desc">${p.LABEL2}</div>` : '';
+    const prob  = (!cig && p.LABEL && !isNaN(parseFloat(p.LABEL)))
+                  ? `<div class="info-sub">${Math.round(parseFloat(p.LABEL)*100)}% probability within 25 mi</div>`
+                  : '';
+
+    html += `
+      <div class="info-card" style="border-left:3px solid ${stroke};padding-left:8px">
+        <div class="info-layer-name">${def.label}</div>
+        <span class="info-badge" style="background:${fill};color:${textColor}">${badgeText}</span>
+        ${desc2}${prob}
+      </div>`;
+  }
+
+  setInfoContent(html);
+}
+
+function setInfoContent(html) {
+  document.getElementById('info-content').innerHTML = html;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Hazard selection (radio behaviour) + CIG auto-follow
+   ────────────────────────────────────────────────────────── */
+function setLayerVisible(key, visible) {
+  const entry = state.layers[key];
+  if (!entry) return;
+  entry.visible = visible;
+  if (visible) entry.leafletLayer.addTo(map);
+  else         map.removeLayer(entry.leafletLayer);
+}
+
+function selectHazard(key) {
+  // Turn off all hazard layers and their CIG companions
+  for (const hk of HAZARD_KEYS) {
+    setLayerVisible(hk, false);
+    const cig = CIG_MAP[hk];
+    if (cig) setLayerVisible(cig, false);
+  }
+  // Turn on selected hazard
+  setLayerVisible(key, true);
+  // Auto-enable its CIG if present
+  const cigKey = CIG_MAP[key];
+  if (cigKey) setLayerVisible(cigKey, true);
+  renderLayersList();
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Render: layer list with radio hazards + CIG sub-rows
+   ────────────────────────────────────────────────────────── */
+function renderLayersList() {
+  const el = document.getElementById('layers-list');
+  el.innerHTML = '';
+
+  const anyLoaded = HAZARD_KEYS.some(k => state.layers[k]);
+  if (!anyLoaded) {
+    el.innerHTML = '<div class="layer-empty">No layers found</div>';
+    return;
+  }
+
+  for (const hKey of HAZARD_KEYS) {
+    const entry = state.layers[hKey];
+    if (!entry) continue;
+
+    const def          = entry.def;
+    const isActive     = entry.visible;
+    const swatchColors = getSwatchColors(entry.geojson.features, false);
+
+    // ── Hazard radio row ──
+    const row = document.createElement('div');
+    row.className = 'layer-row' + (isActive ? '' : ' dimmed');
+    row.dataset.key = hKey;
+
+    const radio = document.createElement('input');
+    radio.type = 'radio'; radio.name = 'hazard-radio';
+    radio.className = 'layer-radio'; radio.checked = isActive;
+    radio.addEventListener('change', () => { if (radio.checked) selectHazard(hKey); });
+
+    const swatchWrap = document.createElement('div');
+    swatchWrap.className = 'layer-swatches';
+    for (const [c] of swatchColors) {
+      const s = document.createElement('div');
+      s.className = 'swatch'; s.style.background = c; s.style.borderColor = c;
+      swatchWrap.appendChild(s);
+    }
+
+    const lbl = document.createElement('span');
+    lbl.className = 'layer-label'; lbl.textContent = def.label;
+
+    const cnt = document.createElement('span');
+    cnt.className = 'layer-count'; cnt.textContent = entry.geojson.features.length;
+
+    row.append(radio, swatchWrap, lbl, cnt);
+    row.addEventListener('click', e => {
+      if (e.target !== radio) { radio.checked = true; selectHazard(hKey); }
+    });
+    el.appendChild(row);
+
+    // ── CIG sub-row (if this hazard has one) ──
+    const cigKey = CIG_MAP[hKey];
+    if (!cigKey || !state.layers[cigKey]) continue;
+
+    const cigEntry  = state.layers[cigKey];
+    const cigActive = cigEntry.visible;
+
+    const subRow = document.createElement('div');
+    subRow.className = 'layer-row layer-sub' + (cigActive ? '' : ' dimmed');
+    subRow.dataset.key = cigKey;
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.className = 'layer-check';
+    cb.checked = cigActive; cb.disabled = !isActive;
+    cb.addEventListener('change', () => doToggle(cigKey, cb.checked));
+
+    const cigSwatchWrap = document.createElement('div');
+    cigSwatchWrap.className = 'layer-swatches';
+    for (const [c] of getSwatchColors(cigEntry.geojson.features, true)) {
+      const s = document.createElement('div');
+      s.className = 'swatch cig-swatch'; s.style.borderColor = c;
+      cigSwatchWrap.appendChild(s);
+    }
+
+    const cigLbl = document.createElement('span');
+    cigLbl.className = 'layer-label'; cigLbl.textContent = cigEntry.def.label;
+
+    const cigCnt = document.createElement('span');
+    cigCnt.className = 'layer-count'; cigCnt.textContent = cigEntry.geojson.features.length;
+
+    subRow.append(cb, cigSwatchWrap, cigLbl, cigCnt);
+    subRow.addEventListener('click', e => {
+      if (e.target !== cb && !cb.disabled) { cb.checked = !cb.checked; doToggle(cigKey, cb.checked); }
+    });
+    el.appendChild(subRow);
+  }
+}
+
+function getSwatchColors(features, isCIGLayer) {
+  const seen = new Set(), out = [];
+  for (const f of features) {
+    const c = validHex(f.properties?.fill) || validHex(f.properties?.stroke);
+    if (c && !seen.has(c)) { seen.add(c); out.push([c, isCIGLayer || isCIGLabel(f.properties?.LABEL)]); }
+    if (out.length >= 6) break;
+  }
+  return out;
+}
+
+function doToggle(key, visible) {
+  setLayerVisible(key, visible);
+  const row = document.querySelector(`.layer-row[data-key="${key}"]`);
+  if (row) row.classList.toggle('dimmed', !visible);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Render: metadata
+   ────────────────────────────────────────────────────────── */
+function renderMeta() {
+  const el = document.getElementById('meta-content');
+  if (!state.meta) { el.innerHTML = '<div class="meta-key" style="color:#334">—</div>'; return; }
+  const m = state.meta;
+  el.innerHTML = `
+    <div class="meta-grid">
+      <div class="meta-key">Issued</div>   <div class="meta-val">${m.issued}</div>
+      <div class="meta-key">Valid</div>    <div class="meta-val">${m.valid}</div>
+      <div class="meta-key">Expires</div>  <div class="meta-val">${m.expires}</div>
+      <div class="meta-key">Forecaster</div><div class="meta-val">${m.forecaster}</div>
+    </div>`;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Clear
+   ────────────────────────────────────────────────────────── */
+function clearLayers() {
+  for (const e of Object.values(state.layers)) map.removeLayer(e.leafletLayer);
+  state.layers = {}; state.meta = null;
+  document.getElementById('layers-list').innerHTML = '<div class="layer-empty">No layers</div>';
+  document.getElementById('meta-content').innerHTML = '<div class="meta-key" style="color:#334">—</div>';
+  document.getElementById('loaded-filename').textContent = '';
+  setInfoContent('<div class="info-empty">Hover or tap the map for feature info</div>');
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Utilities
+   ────────────────────────────────────────────────────────── */
+function latlngStr({ lat, lng }) {
+  const la = lat  >= 0 ? `${lat.toFixed(3)}°N`  : `${(-lat).toFixed(3)}°S`;
+  const lo = lng >= 0 ? `${lng.toFixed(3)}°E`  : `${(-lng).toFixed(3)}°W`;
+  return `${la}  ${lo}`;
+}
+
+function validHex(s) {
+  return typeof s === 'string' && /^#[0-9A-Fa-f]{6}$/.test(s.trim()) ? s.trim() : null;
+}
+
+/* Map a numeric probability (DN) to SPC-standard fill colour for day 4–8 products */
+function probDnColor(dn) {
+  if (dn >= 70) return '#C80000';
+  if (dn >= 60) return '#FF0000';
+  if (dn >= 45) return '#FF8000';
+  if (dn >= 30) return '#FFCC00';
+  if (dn >= 15) return '#009000';
+  if (dn >= 5)  return '#C8E8A0';
+  return null;
+}
+
+function contrastColor(hex) {
+  if (!validHex(hex)) return '#fff';
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  return (0.2126*r + 0.7152*g + 0.0722*b) > 145 ? '#111' : '#fff';
+}
+
+function formatLabel(label) {
+  if (!label) return '—';
+  if (isCIGLabel(label)) return label;
+  const n = parseFloat(label);
+  if (!isNaN(n) && n <= 1) return `${Math.round(n * 100)}%`;
+  return label;
+}
+
+function fmtTime(raw) {
+  if (!raw) return '—';
+  try {
+    const d = new Date(raw);
+    if (!isNaN(d)) return d.toUTCString().replace(':00 GMT', ' UTC').replace(/^\w+, /, '');
+  } catch { /* fall through */ }
+  if (/^\d{12}$/.test(raw)) {
+    const [yr, mo, dy, hh, mm] = [raw.slice(0,4), raw.slice(4,6), raw.slice(6,8), raw.slice(8,10), raw.slice(10,12)];
+    return `${dy} ${['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+mo-1]} ${yr} ${hh}:${mm} UTC`;
+  }
+  return raw;
+}
+
+function showLoading(on) {
+  document.getElementById('loading').classList.toggle('visible', on);
+}
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+}
+
+function toggleTheme() {
+  const cur  = document.documentElement.dataset.theme;
+  const next = cur === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem('spc-theme', next);
+  if (baseTile) map.removeLayer(baseTile);
+  baseTile = L.tileLayer(tileUrl(next), {
+    attribution: TILE_ATTR,
+    subdomains: 'abcd',
+    maxZoom: 20,
+  }).addTo(map);
+  document.getElementById('theme-toggle').textContent = next === 'dark' ? '☀️' : '🌙';
+}
+</script>
+</body>
+</html>
